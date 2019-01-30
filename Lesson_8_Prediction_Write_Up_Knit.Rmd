@@ -1,0 +1,181 @@
+---
+title: "Prediction on the Weight Lifting Exercise"
+author: "Jessie J. Q"
+date: "January 30, 2019"
+output: html_document
+---
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+## Data
+
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+```{r, include=FALSE, echo=TRUE}
+
+library(caret)
+library(dplyr)
+library(rpart)
+library(rpart.plot)
+library(corrplot)
+library(rattle)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE, echo=TRUE}
+
+if(!file.exists("./data")) {
+  dir.create("./data")
+}
+
+url_training <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(url_training, destfile = "./data/pml-training.csv", method = "curl")
+
+url_testing <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(url_testing, destfile = "./data/pml-testing.csv", method = "curl")
+
+pml_training <- read.csv("./data/pml-training.csv", na.strings = c("NA",""))
+pml_testing <- read.csv("./data/pml-testing.csv", na.strings = c("NA",""))
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, include=TRUE, echo=TRUE}
+
+dim(pml_training)
+dim(pml_testing)
+
+
+```
+
+## Data Preparation
+
+1. Remove variables that most values are NA.  In this dataset, some columns have more than 90% of their value as NA.They won't provide any value but slow down the processing and increase computational effort.  
+
+```{r, include=FALSE, echo=TRUE}
+
+remove_na <- sapply(pml_training, function(x) mean(is.na(x))) > 0.90
+training_na <- pml_training[ , remove_na == FALSE]
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+2. Remove near zero values (NZV).  In this dataset, many values are zero or near zero. These data are removed to facilitate faster and more efficient analysis.
+
+
+```{r, include=TRUE, echo=TRUE}
+
+remove_nzv <- nearZeroVar(training_na, names = TRUE, freqCut = 2, uniqueCut = 20)
+remove_nzv 
+
+training_nzv <- training_na[ , !(names(training_na) %in% remove_nzv)]
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+3. Remove irrelevant variables.  The first 6 columns are not relevant to further analysis, not related to any dependent variables.
+
+
+```{r, include=TRUE, echo=TRUE}
+
+training_irr <- training_nzv[ , -c(1:6)]
+```
+
+4. Remove highly correlated variables.  First, find factor variables and remove them since findCorrelation function in R only work for numeric variables.  And then, find highly correlation variables and remove them.
+
+```{r, include=TRUE, echo=TRUE}
+
+corr_data <- cor(training_irr[ , -47])
+
+corrplot(corr_data, method = "circle", type = "upper",
+         tl.cex = 0.6, tl.col = "black", tl.srt = 45)
+
+high_corr <- findCorrelation(corr_data, cutoff = 0.9, verbose = TRUE)
+
+training <-  training_irr[,-high_corr]
+dim(training)
+```
+
+## Modeling
+
+Split training set into train and test for cross validation purpose
+
+```{r, include=TRUE, echo=TRUE}
+
+inTrain <- createDataPartition(y = training$classe, p = 0.75, list = FALSE)
+train <- training[inTrain, ]
+test <- training[-inTrain, ]
+
+dim(train)
+
+dim(test) 
+
+```
+
+## Decision Tree Modeling
+
+```{r, include=TRUE, echo=TRUE}
+
+set.seed(1471)
+modFit <- train(classe ~ ., method = "rpart", data = train)
+print(modFit$finalModel)
+
+train_tree <- rpart(classe ~ ., data = train, method="class")
+prp(train_tree)
+
+predict_tree <- predict(train_tree, newdata = test, type="class")
+conf_matrix <- confusionMatrix(predict_tree, test$classe)
+conf_matrix
+
+```
+
+## Random Forest Modeling
+
+```{r, include=TRUE, echo=TRUE}
+
+set.seed(1471)
+train_ctrl_rf <- trainControl(method = "repeatedcv", number = 5, repeats = 2)
+train_rf  <- train(classe ~ ., data = train, method = "rf", trControl = train_ctrl_rf, verbose = FALSE)
+print(train_rf$finalModel)
+
+predict_rf <- predict(train_rf, newdata = test)
+conf_matrix_rf <- confusionMatrix(predict_rf, test$classe)
+conf_matrix_rf
+
+```
+```{r, include=TRUR, echo=TRUE}
+plot(varImp(train_rf))
+
+```
+
+
+## Out of Sample Accuracy
+
+Out of Sample Accuracy (OOB) is 0.82% for Random Forest Model
+
+## Conclusion
+
+Accuracy rate for Decision Tree Model is 64%.  Accuracry rate for Random Forest Model is 99.33%.  As conclusion, Randome Forest model is selected to predict 20 differet test cases
+
+## Deployment
+
+Use Random Forest model to predict 20 different test cases
+
+```{r include=TRUE, echo=TRUE}
+predict_20 <- predict(train_rf, newdata = pml_testing)
+
+```
+
+```{r include=TRUE, echo=FALSE}
+list(predict_20)
+
+```
+
+
