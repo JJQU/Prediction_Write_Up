@@ -170,12 +170,9 @@ Use Random Forest model to predict 20 different test cases
 
 ```{r include=TRUE, echo=TRUE}
 predict_20 <- predict(train_rf, newdata = pml_testing)
-
+predict_20
 ```
 
-```{r include=TRUE, echo=FALSE}
-list(predict_20)
 
-```
 
 
